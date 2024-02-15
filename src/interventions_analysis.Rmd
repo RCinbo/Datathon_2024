@@ -1,0 +1,105 @@
+---
+title: "Analysis of interventions"
+author: "Raïsa Carmen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rprojroot)
+library(tidyverse)
+library(arrow)
+library(plotly)
+library(tidygeocoder) # to go from address to coordinates
+library(furrr) # for parallel geocoding
+library(sf)
+library(leaflet)
+library(git2rdata)
+datafolder <- find_root_file("Data",
+                             criterion = has_file("Datathon_2024.Rproj"))
+interventions1 <- read_parquet(file = paste0(datafolder,
+                                             "/interventions1.parquet"))
+interventions2 <- read_parquet(file = paste0(datafolder,
+                                             "/interventions2.parquet"))
+interventions3 <- read_parquet(file = paste0(datafolder,
+                                             "/interventions3.parquet"))
+interventions <- rbind(interventions1, interventions2, interventions3)
+rm(interventions1, interventions2, interventions3)
+interventions_permanence_geodata <-
+  read_vc(file = "interventions_permanence_geodata",
+          root = datafolder)
+#remove spaces form the column names:
+colnames(interventions) <- str_replace(colnames(interventions), " ", "_")
+```
+
+# General overview
+
+Each of the three intervention files have the same number of observations and the same columns; we row bind all three files to obtain one R object with interventions.
+
+```{r cars}
+glimpse(interventions)
+```
+
+
+There are `r length(unique(interventions$Vector_type))` different possible vectors; `r paste(sort(unique(interventions$Vector_type)), collapse = ", " )`. The vast majority are either regular ambulance, MUG of PIT. An ambulance typically has two ambulance operators which are typically not nurses or doctors. These operators cannot administer medications but typically can use and AED or help the patients with oxygen for breathing. A PIT (Pre-hospital Intervention Team) has one a ambulance operator and a nurse that obtained special training. The nurse may administer medications, take an ECG or blood. In a MUG, there is an emergency doctor and a nurse that received additional training. The nurse typically drives the car (often an SUV).
+
+```{r ventor_types, echo = FALSE}
+p <- interventions %>%
+  group_by(Vector_type) %>%
+  summarize(nb_interventions = n()) %>%
+  mutate(Vector_type = paste0(Vector_type, " (", nb_interventions, ")")) %>%
+  ggplot(aes(y = Vector_type, x = nb_interventions)) +
+  geom_bar(stat = "identity")
+ggplotly(p)
+```
+
+# Permanence
+
+I hypothesize that the permanence indicates the location of the "vector" (PIT/MUG/Ambulance).
+Latitude and longitude are missing in `r round(100*sum(is.na(interventions$Longitude_permanence)) / nrow(interventions), 2)` % of the interventions while the postal code is missing in only `r round(100*sum(is.na(interventions$PostalCode_permanence)) / nrow(interventions), 2)`% of the interventions. No coordinate system is specified for the longitude and latitude. The range of longitude (`r interventions %>% filter(!is.na(Longitude_permanence)) %>% dplyr::pull(Longitude_permanence) %>% min()` to `r interventions %>% filter(!is.na(Longitude_permanence)) %>% dplyr::pull(Longitude_permanence) %>% max()`) or latitude (`r interventions %>% filter(!is.na(Latitude_permanence)) %>% dplyr::pull(Latitude_permanence) %>% min()` to `r interventions %>% filter(!is.na(Latitude_permanence)) %>% dplyr::pull(Latitude_permanence) %>% max()`) does not match with either WGS84, Lambert72, or Lambert2008 coordinate bounds (these are probably the most often used coordinate systems for Belgium). We therefor use the tidygeocoder package to obtain the coordinates of the address. 
+
+The figure below shows that this package works well (click on the markers to see the original address) although the coordinates are not found for all addresses (there are some NAs).
+
+```{r permanence_adress_to_coord, echo=FALSE}
+interventions <- interventions %>%
+  mutate(full_address_permanence = paste(StreetName_permanence,
+                              HouseNumber_permanence,
+                              as.character(PostalCode_permanence),
+                              CityName_permanence),
+         full_address_permanence = str_remove_all(full_address_permanence,
+                                       regex("NA", ignore_case = FALSE))) %>%
+  left_join(interventions_permanence_geodata,
+            by = join_by(full_address_permanence == address))
+#check whether this can be right
+scaled_down_interventions <- interventions %>%
+  filter(!is.na(longitude_permanence)) %>%
+  group_by(full_address_permanence, Vector_type) %>%
+  slice(1)
+colorpal <- colorFactor(palette = 'RdYlGn',
+                        scaled_down_interventions$Vector_type)
+
+scaled_down_interventions %>%
+  st_as_sf(coords = c("longitude_permanence", "latitude_permanence"),
+           crs = "EPGS:4326") %>%
+  leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(color = ~colorpal(Vector_type),
+             popup = scaled_down_interventions %>%
+               dplyr::pull(full_address_permanence)) %>%
+  addLegend('bottomright', pal = colorpal,
+            values = scaled_down_interventions$Vector_type,
+            title = 'Vector_Type',
+            opacity = 1)
+```
+However, obtaining the geolocation is quite slow. It takes about 500 seconds to obtain 1000 geolocations in parallel (7 parallel cores). Since there are only `r nrow(interventions_permanence_geodata)` unique permanence addresses, it was still feasible to obtain these. It should be noted that `r sum(is.na(interventions_permanence_geodata$latitude_permanence))` (`r round(sum(is.na(interventions_permanence_geodata$latitude_permanence))/nrow(interventions_permanence_geodata)*100,2)`%) geolocations were not found using the *tidygeocoder* package.
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

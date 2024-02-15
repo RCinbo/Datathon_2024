@@ -1,0 +1,13 @@
+..generic:
+  git2rdata: 0.4.0
+  optimize: yes
+  NA string: NA
+  sorting: address
+  hash: 853fff3f5f6f59891a15ad577824a1a1ddfc76c6
+  data_hash: d46a7d670dd6ce35103846c95005d9ced39705e1
+address:
+  class: character
+latitude_permanence:
+  class: numeric
+longitude_permanence:
+  class: numeric
