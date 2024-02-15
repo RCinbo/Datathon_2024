@@ -162,6 +162,99 @@ p_lon + p_lat
 ```
 
 
+# Intervention
+Similar to the permanence locations, we see that the longitude and latitude contain some nonsensical values. We correct those values accordingly.
+
+```{r raw-intervention-location, echo=FALSE, fig.cap="A random sample of 5000 intervention locations with the raw, uncorrected longitude and latitude. The red lines show the bounding box of Belgium for the WGS84 coordinate system."}
+interventions %>%
+  group_by(Longitude_intervention, Latitude_intervention) %>%
+  slice(1) %>% #remove duplicates
+  ungroup() %>%
+  slice_sample(n = 5000) %>% # don't keep all records because that makes the figure slow
+  ggplot(aes(x = Longitude_intervention, y = Latitude_intervention)) +
+  geom_point(alpha = 0.2) +
+  geom_hline(yintercept = c(49.5, 51.51), color = "red") +
+  geom_vline(xintercept = c(2.5, 6.4), color = "red")
+```
+
+```{r corrected-intervention-location, echo=FALSE, fig.cap="A random sample of 5000 intervention locations with corrected longitude and latitude. The red lines show the bounding box of Belgium for the WGS84 coordinate system."}
+interventions <- interventions %>%
+  mutate(Longitude_intervention =
+           ifelse(Longitude_intervention < 2.5,
+                  NA,
+                  ifelse(Longitude_intervention < 6.4,
+                         Longitude_intervention,
+                         ifelse(Longitude_intervention < 64,
+                                Longitude_intervention/10,
+                                Longitude_intervention/100))),
+         Latitude_intervention =
+           ifelse(Latitude_intervention < 49.5,
+                  NA,
+                  ifelse(Latitude_intervention < 51.51,
+                         Latitude_intervention,
+                         Latitude_intervention/10)))
+interventions %>%
+  group_by(Longitude_intervention, Latitude_intervention) %>%
+  slice(1) %>% #remove duplicates
+  ungroup() %>%
+  slice_sample(n = 5000) %>% # don't keep all records because that makes the figure slow
+  ggplot(aes(x = Longitude_intervention, y = Latitude_intervention)) +
+  geom_point(alpha = 0.2) +
+  geom_hline(yintercept = c(49.5, 51.51), color = "red") +
+  geom_vline(xintercept = c(2.5, 6.4), color = "red") +
+  xlab("corrected longitude") +
+  ylab("corrected latitude")
+```
+
+## Density of interventions in Belgium
+
+```{r density-interventions-data, echo=FALSE, eval = !file.exists(paste0(datafolder, "/intervention_honeycomb.Rdata"))}
+#tutorial https://urbandatapalette.com/post/2021-08-tessellation-sf/
+interventions_sf <- interventions %>%
+  filter(!is.na(Latitude_intervention) & !is.na(Longitude_intervention)) %>%
+  st_as_sf(coords = c("Longitude_intervention", "Latitude_intervention"),
+           crs = 4326)
+area_honeycomb_grid <- st_make_grid(interventions_sf, square = FALSE,
+                                   what = "polygons",
+                                   n = 50)
+# To sf and add grid ID
+honeycomb_grid_sf = st_sf(area_honeycomb_grid) %>%
+  # add grid ID
+  mutate(grid_id = 1:length(lengths(area_honeycomb_grid)))
+
+# count number of points in each grid
+# https://gis.stackexchange.com/questions/323698/counting-points-in-polygons-with-sf-package-of-r
+honeycomb_grid_sf$n_colli <-
+  lengths(st_intersects(honeycomb_grid_sf, interventions_sf))
+
+# remove grid without value of 0 (i.e. no points in side that grid)
+honeycomb_count <- filter(honeycomb_grid_sf, n_colli > 0)
+save(honeycomb_count, honeycomb_grid_sf, file = paste0(datafolder, "/intervention_honeycomb.Rdata"))
+```
+```{r density_interventions-plot, echo=FALSE, warning = FALSE}
+library(tmap)
+load(paste0(datafolder, "/intervention_honeycomb.Rdata"))
+honeycomb_count <- honeycomb_count %>%
+  mutate(log_n_colli = log(n_colli))
+tm_shape(honeycomb_count) +
+  tm_fill(
+    col = "log_n_colli",
+    palette = "Reds",
+    style = "cont",
+    title = "Number of interventions (log-scale)",
+    id = "grid_id",
+    showNA = FALSE,
+    alpha = 0.6,
+    popup.vars = c(
+      "Number of interventions(log scale): " = "n_colli"
+    ),
+    popup.format = list(
+      n_colli = list(format = "f", digits = 0)
+    )
+  ) +
+  tm_borders(col = "grey40", lwd = 0.7)
+```
+
 ## Including Plots
 
 You can also embed plots, for example:
