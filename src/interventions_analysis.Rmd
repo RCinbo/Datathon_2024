@@ -16,6 +16,7 @@ library(furrr) # for parallel geocoding
 library(sf)
 library(leaflet)
 library(git2rdata)
+library(patchwork)
 datafolder <- find_root_file("Data",
                              criterion = has_file("Datathon_2024.Rproj"))
 interventions1 <- read_parquet(file = paste0(datafolder,
@@ -93,6 +94,73 @@ scaled_down_interventions %>%
             opacity = 1)
 ```
 However, obtaining the geolocation is quite slow. It takes about 500 seconds to obtain 1000 geolocations in parallel (7 parallel cores). Since there are only `r nrow(interventions_permanence_geodata)` unique permanence addresses, it was still feasible to obtain these. It should be noted that `r sum(is.na(interventions_permanence_geodata$latitude_permanence))` (`r round(sum(is.na(interventions_permanence_geodata$latitude_permanence))/nrow(interventions_permanence_geodata)*100,2)`%) geolocations were not found using the *tidygeocoder* package.
+
+The coordinates of the tidygeocoder package and the specified seem to match quite well, except for a couple of obvious mistakes. The figure below shows the logitude and latitude according to tidygeocoder and according to the raw data. The red lines show the WGS84 bounds for Belgium. 
+Most nonsensical raw longitude/latitude data points seem to be on a straight. We can hypothesize that these numbers should in fact be 10 or 100 times smaller.
+
+```{r lonlat-raw-vs-tidygeocoder, echo=FALSE, warning = FALSE}
+p_lon <- interventions %>%
+  filter(!is.na(longitude_permanence)) %>%
+  group_by(full_address_permanence, Vector_type) %>%
+  slice(1) %>%
+  ggplot(aes(x = longitude_permanence, y = Longitude_permanence)) +
+  geom_point(alpha = 0.4) +
+  xlab("tidygeocoder longitude") +
+  ylab("raw longitude") +
+  geom_vline(xintercept = c(2.5, 6.4), color = "red") +
+  geom_hline(yintercept = c(2.5, 6.4), color = "red")
+p_lat <- interventions %>%
+  filter(!is.na(longitude_permanence)) %>%
+  group_by(full_address_permanence, Vector_type) %>%
+  slice(1) %>%
+  ggplot(aes(x = latitude_permanence, y = Latitude_permanence)) +
+  geom_point(alpha = 0.4) +
+  xlab("tidygeocoder latitude") +
+  ylab("raw latitude") +
+  geom_vline(xintercept = c(49.5, 51.51), color = "red") +
+  geom_hline(yintercept = c(49.5, 51.51), color = "red")
+
+p_lon + p_lat
+```
+
+Indeed, if we correct the raw data by dividing the lon/lat by either 10 or 100 (depending on the value), all permanence locations lie within the red boundaries and are approximately the same as the tidygeocode locations (see figure below).
+
+```{r corrected_lonlat, echo=FALSE, warning = FALSE}
+interventions <- interventions %>%
+  mutate(Longitude_permanence_corrected =
+           ifelse(Longitude_permanence < 6.4,
+                  Longitude_permanence,
+                  ifelse(Longitude_permanence < 64,
+                         Longitude_permanence/10,
+                         Longitude_permanence/100)),
+         Latitude_permanence_corrected =
+           ifelse(Latitude_permanence < 51.51,
+                  Latitude_permanence,
+                  Latitude_permanence/10))
+p_lon <- interventions %>%
+  filter(!is.na(longitude_permanence)) %>%
+  group_by(full_address_permanence, Vector_type) %>%
+  slice(1) %>%
+  ggplot(aes(x = longitude_permanence, y = Longitude_permanence_corrected)) +
+  geom_point(alpha = 0.4) +
+  xlab("tidygeocoder longitude") +
+  ylab("corrected raw longitude") +
+  geom_vline(xintercept = c(2.5, 6.4), color = "red") +
+  geom_hline(yintercept = c(2.5, 6.4), color = "red")
+p_lat <- interventions %>%
+  filter(!is.na(longitude_permanence)) %>%
+  group_by(full_address_permanence, Vector_type) %>%
+  slice(1) %>%
+  ggplot(aes(x = latitude_permanence, y = Latitude_permanence_corrected)) +
+  geom_point(alpha = 0.4) +
+  xlab("tidygeocoder latitude") +
+  ylab("corrected raw latitude") +
+  geom_vline(xintercept = c(49.5, 51.51), color = "red") +
+  geom_hline(yintercept = c(49.5, 51.51), color = "red")
+
+p_lon + p_lat
+```
+
 
 ## Including Plots
 
