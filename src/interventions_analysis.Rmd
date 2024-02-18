@@ -18,6 +18,7 @@ library(leaflet)
 library(git2rdata)
 library(patchwork)
 library(viridis)
+library(units)
 datafolder <- find_root_file("Data",
                              criterion = has_file("Datathon_2024.Rproj"))
 interventions1 <- read_parquet(file = paste0(datafolder,
@@ -275,7 +276,7 @@ tm_shape(honeycomb_count) +
 ## Time to arrive to the emergency
 
 The time to arrive to an emergency site will likely depend on how urgent the triage nurse deems the intervention and the time of day (due to availability of ambulances, personnel, and supply and demand). The urgency can be derived from the column *EventLevel_Trip* which ranges from N0 (most urgent) to N8 (least urgent). `r round(100*mean(is.na(interventions$EventLevel_Trip)), 2)`% of interventions have a missing urgency level. By far most interventions have priority level *N5*. 
-```{r}
+```{r, echo=FALSE}
 interventions %>%
   filter(!is.na(EventLevel_Trip)) %>%
   ggplot(aes(x = EventLevel_Trip)) +
@@ -284,7 +285,7 @@ interventions %>%
   ylab("Number of interventions") 
 ```
 
-```{r time-to-arrival-all, fig.cap = "Mean time from the initial call to the arrival at the interventins, depending on time-of-day and the emergency level (on the left). Urgency levels N7 and N8 were left out since we have too few (less than 100) interventions in those categories."}
+```{r time-to-arrival-all, echo=FALSE, fig.cap = "Mean time from the initial call to the arrival at the interventins, depending on time-of-day and the emergency level (on the left). Urgency levels N7 and N8 were left out since we have too few (less than 100) interventions in those categories."}
 p1 <- interventions %>%
   filter(!is.na(EventLevel_Trip) &
            !(EventLevel_Trip %in% c("N7A", "N7B", "N8")) &
@@ -349,7 +350,7 @@ The column *Abandon_reason* indicates why a transportation to the hospital may n
 
 Most heart attacks are classified in the highest priority categories *N0* of *N1*
 
-```{r cardiac-arrest-urgency, echo=TRUE, fig.cap = "classification of the urgency of a cardiac arrest intervention. One cardiac arrest did not get a priority level assigned."}
+```{r cardiac-arrest-urgency, echo=TRUE, fig.cap = "classification of the urgency of a cardiac arrest intervention. One cardiac arrest did not get a priority level assigned.", echo=FALSE}
 cardiac_arrest %>%
   filter(!is.na(EventLevel_Trip)) %>%
   ggplot(aes(x = EventLevel_Trip, fill = as.factor(death))) +
@@ -361,3 +362,61 @@ cardiac_arrest %>%
                       labels = c("No", "Yes")) +
   theme(legend.position = "bottom")
 ```
+
+## Distance to the closest AED
+
+Next to the time to arrival, we also are interested in looking at whether the distance to the closest AED can reduce the probability for the patient to die before being transported.
+
+```{r cardiacarrests-aed, echo=FALSE, fig.cap = "Cardiac arrests in red and AED locations in blue."}
+aed_loc <- read_parquet(
+  file = paste0(datafolder, "/aed_locations.parquet.gzip")) %>%
+  mutate(address = paste(address, number, postal_code, municipality)) %>%
+  mutate(address = str_remove_all(address, "NA"))
+aed_geoloc <- read_vc(file = "aed_geodata", root = datafolder)
+aed_loc <- aed_loc %>%
+  left_join(aed_geoloc)
+
+aed_loc_sf <- aed_loc %>%
+  filter(!is.na(latitude) &
+           latitude > 49.5 & latitude < 51.51 &
+           longitude > 2.5& longitude < 6.4) %>%
+  st_as_sf(coords = c('longitude', 'latitude'), crs = "EPGS:4326")
+cardiac_arrest_sf <- cardiac_arrest %>%
+  filter(!is.na(Latitude_intervention)&
+           Latitude_intervention > 49.5 & Latitude_intervention < 51.51 &
+           Longitude_intervention > 2.5 & Longitude_intervention < 6.4) %>%
+  st_as_sf(coords = c('Longitude_intervention', 'Latitude_intervention'),
+           crs = "EPGS:4326")
+cardiac_arrest_sf <- cardiac_arrest_sf %>% sf::st_set_crs(4326)
+aed_loc_sf <- aed_loc_sf %>% sf::st_set_crs(4326)
+ggplot() +
+  geom_sf(data = aed_loc_sf, color = "blue") +
+  geom_sf(data = cardiac_arrest_sf, color = "red")
+write_vc(aed_loc, file = "aed_locations", root = datafolder,
+         sorting = "address")
+```
+
+Some geographical locations for both the AED machines and the cardiac arrests could not be reliably found. Finally, `r nrow(aed_loc_sf)` of the `r nrow(aed_loc)` AED machines and `r nrow(cardiac_arrest_sf)` of the `r nrow(cardiac_arrest)` remain in the final dataset. For each of the cardiac arrests, we determine which AED machine is closest to the intervention site and the distance between both (in meters).
+
+```{r, echo=TRUE}
+cardiac_arrest_sf_lambert <-  cardiac_arrest_sf %>%
+  st_transform(crs = "EPSG:31370")
+aed_loc_sf_lambert <- aed_loc_sf %>%
+  st_transform(crs = "EPSG:31370")
+#transform to lambert to get the distance in meters
+idx_closest <- st_nearest_feature(cardiac_arrest_sf_lambert, aed_loc_sf_lambert)
+distances <-
+  sapply(X = seq_len(length(idx_closest)),
+         FUN = function(x){
+           a <- st_distance(cardiac_arrest_sf_lambert[x,],
+                            aed_loc_sf_lambert[idx_closest[x],])
+           return(drop_units(a))
+           })
+cardiac_arrest_sf$distance_closest_idx <- idx_closest
+cardiac_arrest_sf$distance_closest_distance <- distances
+cardiac_arrest <- cardiac_arrest %>%
+  left_join(cardiac_arrest_sf %>%
+              st_drop_geometry())
+save(cardiac_arrest, file = paste0(datafolder, "/cardiac_arrest.Rdata"))
+```
+
