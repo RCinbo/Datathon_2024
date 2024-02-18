@@ -32,6 +32,8 @@ interventions_permanence_geodata <-
           root = datafolder)
 #remove spaces form the column names:
 colnames(interventions) <- str_replace(colnames(interventions), " ", "_")
+
+# clean up the time stamps
 ```
 
 # General overview
@@ -255,12 +257,15 @@ tm_shape(honeycomb_count) +
   tm_borders(col = "grey40", lwd = 0.7)
 ```
 
-## Including Plots
+# Cardiac arrests
 
-You can also embed plots, for example:
+Looking at the interventions data, it can be seen that the column *EventType_Trip*  indicates the reason of the trip i.e. the diagnosis of the patient at arrival of the EMS. Since AEDs are only recommended for cardiac arrests, we filter out the interventions which pertain to cardiac arrests. 
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r cardiac-arrest-data, echo=TRUE}
+cardiac_arrest <- interventions %>%
+  filter(str_detect(EventType_Trip, regex("cardiac arrest",
+                                          ignore_case = TRUE))) %>%
+  mutate(death = 1*(!is.na(Abandon_reason) & Abandon_reason == "Overleden"))
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+The column *Abandon_reason* indicates why a transportation to the hospital may not have taken place. For `r sum(cardiac_arrest$death)` out of the `r nrow(cardiac_arrest)` cardiac arrests (`r round(100*mean(cardiac_arrest$death),2)`%), this column contains *"overleden"* (deceased) meaning the patient died before being transported. Since the overall survival rate for cardiac arrest outside of the hospital in Belgium is only about 5 to 10%, we can assume that many more succomb during or after transportation as well. 
