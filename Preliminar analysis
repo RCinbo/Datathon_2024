@@ -1,0 +1,105 @@
+## Preliminar analysis (Plots) for aed_locations dataset
+pip install keras 
+pip install tensorflow
+import tensorflow as tf 
+import sys
+!{sys.executable} -m pip install xgboost
+import sys
+!{sys.executable} -m pip install xgboost
+!pip install pycaret
+
+# imports
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+ 
+
+from sklearn.model_selection import train_test_split
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import mean_squared_error
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import r2_score
+from sklearn.metrics import accuracy_score
+from sklearn.metrics import f1_score
+from sklearn.metrics import precision_score
+from sklearn.metrics import recall_score
+from sklearn.metrics import roc_auc_score
+import xgboost as xgb
+from sklearn.model_selection import StratifiedKFold
+
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from keras.layers import Dropout
+
+import pickle
+
+from pycaret.regression import *
+from pycaret.datasets import get_data
+
+## Importing data
+
+import pyarrow.parquet as pq
+df=pd.read_csv('aed_locations.tsv', sep='\t')
+
+##EXPLORATORY FACTOR ANALYSIS
+
+top = df['province'].value_counts()[:10]
+top.plot(kind='bar',figsize=(13,13))
+plt.title('AED devices distribution around the Belgian provinces')
+
+## The plot shows us that 
+
+
+## Availability of each type of AED device in each province
+fig = px.bar(df, x='province', y='public',
+             hover_data=['type'], color='public',
+             labels={'Province':'number of AED'})
+fig.show()
+
+## Type of device
+tipo = df['type'].value_counts()[:10]
+tipo.plot(kind='bar',figsize=(13,13))
+plt.title(' Type of AED devices in Belgium')
+
+
+#### Preliminar analysis (Plots) for cardiac_arrest.Rdata dataset
+
+pip install pyreadr
+import pyreadr
+
+df3= pyreadr.read_r('cardiac_arrest.Rdata')
+print(df3.keys()) 
+
+df4 = df3['cardiac_arrest'] # extract the pandas data frame
+df4 = df4.drop_duplicates(keep="first") ##control of duplicates
+
+##correlation matrix
+
+corrmat = df4.corr()
+f, ax = plt.subplots(figsize=(12, 9))
+sns.heatmap(corrmat, vmax=.8, square=True)
+plt.show()
+
+#Frequency of death
+plot = df4['death'].value_counts().plot(kind='bar',
+                                            title='Death')
+
+## Deaths in each Province based on the Waiting time variable
+figura = px.bar(df4, x='Province_intervention', y='death',
+             hover_data=['death'], color='Waiting_time',
+             labels={'Deaths in each Province based on the Waiting Time'})
+figura.show()
+
+# Histogram for each case regardingt the variable PostalCode_permanence
+
+df4.hist(column='PostalCode_permanence')
+
+
+
+
+
+
