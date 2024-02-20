@@ -1,13 +1,9 @@
 ## Preliminar analysis (Plots) for aed_locations dataset
 
-
-# imports
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
- 
-
 
 ## Importing data
 
@@ -20,19 +16,24 @@ top = df['province'].value_counts()[:10]
 top.plot(kind='bar',figsize=(13,13))
 plt.title('AED devices distribution around the Belgian provinces')
 
-## The plot shows us that 
+import time
+import plotly.express as px
 
-
-## Availability of each type of AED device in each province
-fig = px.bar(df, x='province', y='public',
-             hover_data=['type'], color='public',
-             labels={'Province':'number of AED'})
-fig.show()
 
 ## Type of device
 tipo = df['type'].value_counts()[:10]
 tipo.plot(kind='bar',figsize=(13,13))
 plt.title(' Type of AED devices in Belgium')
+
+##remplazar los na
+df.fillna(0, inplace=True)
+
+## Availability of each type of AED device in each province
+
+fig = px.bar(df, x='province', y='public',
+             hover_data=['type'], color='public',
+             labels={'Province':'number of AED'})
+fig.show()
 
 
 #### Preliminar analysis (Plots) for cardiac_arrest.Rdata dataset
@@ -41,8 +42,6 @@ pip install pyreadr
 import pyreadr
 
 df3= pyreadr.read_r('cardiac_arrest.Rdata')
-print(df3.keys()) 
-
 df4 = df3['cardiac_arrest'] # extract the pandas data frame
 df4 = df4.drop_duplicates(keep="first") ##control of duplicates
 
@@ -64,7 +63,6 @@ figura = px.bar(df4, x='Province_intervention', y='death',
 figura.show()
 
 # Histogram for each case regardingt the variable PostalCode_permanence
-
 df4.hist(column='PostalCode_permanence')
 
 
