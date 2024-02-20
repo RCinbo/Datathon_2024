@@ -1,0 +1,156 @@
+---
+title: "bxl interventions"
+author: "Raïsa Carmen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rprojroot)
+library(tidyverse)
+library(arrow)
+library(plotly)
+library(tidygeocoder) # to go from address to coordinates
+library(furrr) # for parallel geocoding
+library(sf)
+library(leaflet)
+library(git2rdata)
+library(patchwork)
+library(viridis)
+library(units)
+datafolder <- find_root_file("Data",
+                             criterion = has_file("Datathon_2024.Rproj"))
+load(paste0(datafolder, "/cardiac_arrest.Rdata"))
+#we read the parquet files and only keep cardiac arrests
+interventions_bxl1 <- read_parquet(
+  file = paste0(datafolder, "/interventions_bxl.parquet.gzip")) %>%
+  filter(str_detect(eventtype_trip, regex("cardiac arrest", ignore_case = T)))
+interventions_bxl2 <- read_parquet(
+  file = paste0(datafolder, "/interventions_bxl2.parquet.gzip")) %>%
+  filter(str_detect(`EventType and EventLevel`,
+                    regex("hart", ignore_case = T)))
+colnames(interventions_bxl1) <- str_to_title(
+  str_replace_all(colnames(interventions_bxl1), " ", "_"))
+colnames(interventions_bxl2) <- str_replace_all(colnames(interventions_bxl2),
+                                            " ", "_")
+
+#align column names with the other cardiac arrest dataset
+interventions_bxl1 <- interventions_bxl1 %>%
+  rename(Mission_ID = Mission_id) %>% #new name = old name
+  rename(Service_Name = Service_name) %>%
+  rename(PostalCode_permanence = Postalcode_permanence) %>%
+  rename(CityName_permanence = Cityname_permanence) %>%
+  rename(StreetName_permanence = Streetname_permanence) %>%
+  rename(HouseNumber_permanence = Housenumber_permanence) %>%
+  rename(EventType_Firstcall = Eventtype_firstcall) %>%
+  rename(EventLevel_Firstcall = Eventlevel_firstcall) %>%
+  rename(EventType_Trip = Eventtype_trip) %>%
+  rename(EventLevel_Trip = Eventlevel_trip) %>%
+  rename(PostalCode_intervention = Postalcode_intervention) %>%
+  rename(CityName_intervention = Cityname_intervention) %>%
+  rename(Intervention_time_T1Reported = Intervention_time_t1reported) %>%
+  rename(Departure_time_T1Reported = Departure_time_t1reported) %>%
+  rename(PostalCode_destination_hospital = Postalcode_destination_hospital) %>%
+  rename(CityName_destination_hospital = Cityname_destination_hospital) %>%
+  rename(StreetName_destination_hospital = Streetname_destination_hospital) %>%
+  rename(HouseNumber_destination_hospital =
+           Housenumber_destination_hospital) %>%
+  rename(Calculated_travelTime_destinatio =
+           Calculated_traveltime_destinatio) %>%
+  rename(Calculated_Distance_destination = Calculated_distance_destination_)
+interventions_bxl2 <- interventions_bxl2 %>%
+  rename(EventType_Trip = EventType_and_EventLevel) %>%
+  rename(CityName_intervention = Cityname_Intervention) %>% #new name = old name
+  rename(Service_Name = Service_Name_NL) %>%
+  rename(CityName_permanence = Cityname_Permanence) %>%
+  rename(StreetName_permanence = Streetname_Permanence) %>%
+  rename(HouseNumber_permanence = Housenumber_Permanence) %>%
+  rename(Latitude_permanence = Latitude_Permanence) %>%
+  rename(Longitude_permanence = Longitude_Permanence) %>%
+  rename(Vector_type = Vector_type_NL) %>%
+  rename(CityName_destination_hospital = Cityname_destination_hospital) %>%
+  rename(StreetName_destination_hospital = Streetname_destination_hospital) %>%
+  rename(HouseNumber_destination_hospital =
+           Housenumber_destination_hospital) %>%
+  rename(Abandon_reason = Abandon_reason_NL)
+# clean up the time stamps
+formats <- c("%d%b%y:%H:%M:%OS", "%Y-%m-%d %H:%M:%OS")
+interventions_bxl1 <- interventions_bxl1 %>%
+  mutate(T0 = as.POSIXct(T0, tryFormats = formats),
+         T1 = as.POSIXct(T1, tryFormats = formats),
+         T1confirmed = as.POSIXct(T1confirmed, tryFormats = formats),
+         T2 = as.POSIXct(T2, tryFormats = formats),
+         T3 = as.POSIXct(T3, tryFormats = formats),
+         T4 = as.POSIXct(T4, tryFormats = formats),
+         T5 = as.POSIXct(T5, tryFormats = formats),
+         T6 = as.POSIXct(T6, tryFormats = formats),
+         T7 = as.POSIXct(T7, tryFormats = formats),
+         Latitude_intervention =
+           ifelse(!is.na(Latitude_intervention),
+                  Latitude_intervention/
+                    (10^(nchar(as.integer(Latitude_intervention)) - 2)),
+                  NA),
+         Longitude_intervention =
+           ifelse(!is.na(Longitude_intervention),
+                  Longitude_intervention/
+                    (10^(nchar(as.integer(Longitude_intervention)) - 1)),
+                  NA))
+interventions_bxl2 <- interventions_bxl2 %>%
+  mutate(T0 = as.POSIXct(T0, tryFormats = formats),
+         T1 = as.POSIXct(T1, tryFormats = formats),
+         T2 = as.POSIXct(T2, tryFormats = formats),
+         T3 = as.POSIXct(T3, tryFormats = formats),
+         T4 = as.POSIXct(T4, tryFormats = formats),
+         T5 = as.POSIXct(T5, tryFormats = formats),
+         T6 = as.POSIXct(T6, tryFormats = formats),
+         T7 = as.POSIXct(T7, tryFormats = formats),
+         Latitude_intervention =
+           ifelse(!is.na(Latitude_intervention),
+                  Latitude_intervention/
+                    (10^(nchar(as.integer(Latitude_intervention)) - 2)),
+                  NA),
+         Longitude_intervention =
+           ifelse(!is.na(Longitude_intervention),
+                  Longitude_intervention/
+                    (10^(nchar(as.integer(Longitude_intervention)) - 1)),
+                  NA))
+
+col_ca <- colnames(cardiac_arrest)
+interventions_bxl <- plyr::rbind.fill(
+  interventions_bxl1 %>%
+    dplyr::select(col_ca[col_ca %in% colnames(interventions_bxl1)]),
+  interventions_bxl2 %>%
+    dplyr::select(col_ca[col_ca %in% colnames(interventions_bxl2)]))
+rm(interventions_bxl1, interventions_bxl2)
+
+interventions_bxl <- interventions_bxl %>%
+  mutate(time_to_arrive = ifelse(!is.na(T3),
+                                 difftime(T3, T0, units = "mins"),
+                                 NA))
+```
+
+# Intervention locations
+
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+interventions_bxl %>%
+  filter(!is.na(Latitude_intervention) & !is.na(Longitude_intervention) ) %>%
+  st_as_sf(coords = c("Longitude_intervention","Latitude_intervention")) %>%
+  ggplot() +
+  geom_sf()
+
+leaflet(interventions_bxl %>%
+  filter(!is.na(Latitude_intervention) & !is.na(Longitude_intervention) ) %>%
+  st_as_sf(coords = c("Longitude_intervention","Latitude_intervention"))) %>%
+  addTiles() %>%
+  addMarkers()
+save(interventions_bxl, file = paste0(datafolder, "/cardiac_arrest_bxl.Rdata"))
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
