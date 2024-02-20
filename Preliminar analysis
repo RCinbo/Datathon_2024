@@ -1,12 +1,5 @@
 ## Preliminar analysis (Plots) for aed_locations dataset
-pip install keras 
-pip install tensorflow
-import tensorflow as tf 
-import sys
-!{sys.executable} -m pip install xgboost
-import sys
-!{sys.executable} -m pip install xgboost
-!pip install pycaret
+
 
 # imports
 import pandas as pd
@@ -15,30 +8,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
  
 
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import RandomizedSearchCV
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import mean_squared_error
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import r2_score
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import f1_score
-from sklearn.metrics import precision_score
-from sklearn.metrics import recall_score
-from sklearn.metrics import roc_auc_score
-import xgboost as xgb
-from sklearn.model_selection import StratifiedKFold
-
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.layers import LSTM
-from keras.layers import Dropout
-
-import pickle
-
-from pycaret.regression import *
-from pycaret.datasets import get_data
 
 ## Importing data
 
