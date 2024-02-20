@@ -33,7 +33,9 @@ interventions_permanence_geodata <-
   read_vc(file = "interventions_permanence_geodata",
           root = datafolder)
 #remove spaces form the column names:
-colnames(interventions) <- str_replace(colnames(interventions), " ", "_")
+colnames(interventions) <- str_replace_all(colnames(interventions), " ", "_") %>%
+  str_remove_all("\\(") %>%
+  str_remove_all("\\)")
 
 # clean up the time stamps; I cannot get the T0 and T1 format to work.
 interventions <- interventions %>%
@@ -342,13 +344,21 @@ Looking at the interventions data, it can be seen that the column *EventType_Tri
 ```{r cardiac-arrest-data, echo=TRUE}
 cardiac_arrest <- interventions %>%
   filter(str_detect(EventType_Trip, regex("cardiac arrest",
-                                          ignore_case = TRUE))) %>%
-  mutate(death = 1*(!is.na(Abandon_reason) & Abandon_reason == "Overleden"))
+                                          ignore_case = TRUE)))
+load(paste0(datafolder, "/cardiac_arrest_bxl.Rdata")) # load the brussels cardiac arrests
+col_ca <- colnames(cardiac_arrest)
+cardiac_arrest <- plyr::rbind.fill(
+  cardiac_arrest,
+  interventions_bxl %>%
+    dplyr::select(col_ca[col_ca %in% colnames(interventions_bxl)])) %>%
+  mutate(death = 1*(!is.na(Abandon_reason) &
+                      (Abandon_reason == "Overleden" |
+                         Abandon_reason == "Dood Ter Plaatse")))
 ```
 
 The column *Abandon_reason* indicates why a transportation to the hospital may not have taken place. For `r sum(cardiac_arrest$death)` out of the `r nrow(cardiac_arrest)` cardiac arrests (`r round(100*mean(cardiac_arrest$death),2)`%), this column contains *"overleden"* (deceased) meaning the patient died before being transported. Since the overall survival rate for cardiac arrest outside of the hospital in Belgium is only about 5 to 10%, we can assume that many more succomb during or after transportation as well.
 
-Most heart attacks are classified in the highest priority categories *N0* of *N1*
+Most heart attacks are classified in the highest priority categories *N0* or *N1*
 
 ```{r cardiac-arrest-urgency, echo=TRUE, fig.cap = "classification of the urgency of a cardiac arrest intervention. One cardiac arrest did not get a priority level assigned.", echo=FALSE}
 cardiac_arrest %>%
@@ -413,7 +423,7 @@ distances <-
            return(drop_units(a))
            })
 cardiac_arrest_sf$distance_closest_idx <- idx_closest
-cardiac_arrest_sf$distance_closest_distance <- distances
+cardiac_arrest_sf$distance_closest <- distances
 cardiac_arrest <- cardiac_arrest %>%
   left_join(cardiac_arrest_sf %>%
               st_drop_geometry())

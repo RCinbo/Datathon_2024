@@ -133,23 +133,17 @@ interventions_bxl <- interventions_bxl %>%
 # Intervention locations
 
 
-
-## Including Plots
-
-You can also embed plots, for example:
-
 ```{r pressure, echo=FALSE}
-interventions_bxl %>%
-  filter(!is.na(Latitude_intervention) & !is.na(Longitude_intervention) ) %>%
-  st_as_sf(coords = c("Longitude_intervention","Latitude_intervention")) %>%
-  ggplot() +
-  geom_sf()
-
+#check whether the location is realistic
 leaflet(interventions_bxl %>%
   filter(!is.na(Latitude_intervention) & !is.na(Longitude_intervention) ) %>%
   st_as_sf(coords = c("Longitude_intervention","Latitude_intervention"))) %>%
   addTiles() %>%
   addMarkers()
+interventions_bxl <- interventions_bxl %>%
+  mutate(time_to_arrive = ifelse(!is.na(T3),
+                                 difftime(T3, T0, units = "mins"),
+                                 NA))
 save(interventions_bxl, file = paste0(datafolder, "/cardiac_arrest_bxl.Rdata"))
 ```
 
